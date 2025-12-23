@@ -28,6 +28,8 @@ class NovaSingularityAgent(Agent):
     ACT_USE = getattr(GameAction, 'ACTION5', GameAction.ACTION5)   # Space
     ACT_CLICK = getattr(GameAction, 'ACTION6', GameAction.ACTION6) # Click
 
+    MAX_ACTIONS = 400
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # --- Knowledge Graph ---
