@@ -7,6 +7,7 @@ from .nova_autarky import NovaAutarkyAgent
 from .nova_omni import NovaOmniAgent
 from .nova_perceptron import NovaPerceptronAgent
 from .nova_polymath import NovaPolymathAgent
+from .kevin_kull import NovaSingularityAgent as KevinKull
 from .recorder import Recorder
 from .swarm import Swarm
 from .templates.langgraph_functional_agent import LangGraphFunc, LangGraphTextOnly
@@ -32,6 +33,7 @@ AVAILABLE_AGENTS["nova_autarky"] = NovaAutarkyAgent
 AVAILABLE_AGENTS["nova_omni"] = NovaOmniAgent
 AVAILABLE_AGENTS["nova_perceptron"] = NovaPerceptronAgent
 AVAILABLE_AGENTS["nova_polymath"] = NovaPolymathAgent
+AVAILABLE_AGENTS["kevin_kull"] = KevinKull
 
 # add all the recording files as valid agent names
 for rec in Recorder.list():
