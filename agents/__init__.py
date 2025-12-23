@@ -14,6 +14,7 @@ from .templates.reasoning_agent import ReasoningAgent
 from .templates.smolagents import SmolCodingAgent, SmolVisionAgent
 from .nova_autarky import NovaAutarkyAgent
 from .nova_omni import NovaOmniAgent
+from .nova_perceptron import NovaPerceptronAgent
 
 load_dotenv()
 
@@ -24,6 +25,7 @@ AVAILABLE_AGENTS: dict[str, Type[Agent]] = {
 }
 AVAILABLE_AGENTS["nova_autarky"] = NovaAutarkyAgent
 AVAILABLE_AGENTS["nova_omni"] = NovaOmniAgent
+AVAILABLE_AGENTS["nova_perceptron"] = NovaPerceptronAgent
 
 # add all the recording files as valid agent names
 for rec in Recorder.list():
