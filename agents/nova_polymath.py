@@ -8,6 +8,13 @@ from .agent import Agent
 from .structs import FrameData, GameAction, GameState
 
 
+import numpy as np
+import random
+import heapq
+from collections import deque
+from .agent import Agent
+from .structs import FrameData, GameAction, GameState
+
 class NovaPolymathAgent(Agent):
     """
     NOVA-M-COP v1.9-POLYMATH
@@ -25,6 +32,8 @@ class NovaPolymathAgent(Agent):
     ACT_RIGHT = GameAction.ACTION4
     ACT_USE = getattr(GameAction, "ACTION5", GameAction.ACTION5)  # Space/Interact
     ACT_CLICK = getattr(GameAction, "ACTION6", GameAction.ACTION6)  # Click
+    ACT_USE = getattr(GameAction, 'ACTION5', GameAction.ACTION5) # Space/Interact
+    ACT_CLICK = getattr(GameAction, 'ACTION6', GameAction.ACTION6) # Click
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -42,6 +51,19 @@ class NovaPolymathAgent(Agent):
 
         # MODES
         self.mode = "ANALYZING"  # ANALYZING -> NAVIGATOR or SCIENTIST
+        self.walls = set()        # {(r, c)}
+        self.visited = set()      # {(r, c)}
+        self.interactions = set() # {(r, c)}
+
+        # STATE TRACKING
+        self.plan = deque()
+        self.last_state = None    # (agent_rc, grid_hash)
+        self.last_action = None
+        self.stuck_counter = 0
+        self.inventory_hash = 0   # Sum of pixel values (detects pickup/change)
+
+        # MODES
+        self.mode = "ANALYZING"   # ANALYZING -> NAVIGATOR or SCIENTIST
         self.boot_steps = 0
 
         # Payload for coordinate actions
@@ -61,6 +83,7 @@ class NovaPolymathAgent(Agent):
         try:
             return self._rigorous_choose(latest)
         except Exception:
+        except Exception as e:
             return self._random_move()
 
     def _rigorous_choose(self, latest: FrameData) -> GameAction:
@@ -79,12 +102,16 @@ class NovaPolymathAgent(Agent):
                 self.mode = "NAVIGATOR"  # We have a body
             elif self.boot_steps > 1:
                 self.mode = "SCIENTIST"  # No body found, assuming God Mode
+                self.mode = "NAVIGATOR" # We have a body
+            elif self.boot_steps > 1:
+                self.mode = "SCIENTIST" # No body found, assuming God Mode
 
         # 3. DYNAMIC PHYSICS UPDATE (The Fix for 'Permanent Walls')
         # If the world mass changed (e.g. Key disappeared), our physics model is outdated.
         # FLUSH WALLS. We might be able to pass through doors now.
         if abs(current_hash - self.inventory_hash) > 0:
             self.walls.clear()  # TABULA RASA
+            self.walls.clear() # TABULA RASA
             self.plan.clear()
         self.inventory_hash = current_hash
 
@@ -97,6 +124,7 @@ class NovaPolymathAgent(Agent):
                 self.ACT_LEFT,
                 self.ACT_RIGHT,
             ]:
+            if self.last_action in [self.ACT_UP, self.ACT_DOWN, self.ACT_LEFT, self.ACT_RIGHT]:
                 if prev_rc == agent_rc and agent_rc is not None:
                     # We didn't move. But did the world change? (e.g. Pushed a box)
                     if prev_hash == current_hash:
@@ -106,6 +134,7 @@ class NovaPolymathAgent(Agent):
                             target_rc = self._get_target(prev_rc, self.last_action)
                             self.walls.add(target_rc)
                             self.plan.clear()  # Re-plan required
+                            self.plan.clear() # Re-plan required
                     else:
                         # Interaction occurred (e.g. Push). Do not mark as wall.
                         self.stuck_counter = 0
@@ -133,6 +162,7 @@ class NovaPolymathAgent(Agent):
         """Logic for ls20: Find Rare Objects -> A* Path"""
         if not start_rc:
             return self._random_move()
+        if not start_rc: return self._random_move()
 
         # HEURISTIC: Go to nearest object we haven't 'consumed'
         targets = self._scan_targets(grid, start_rc)
@@ -140,6 +170,7 @@ class NovaPolymathAgent(Agent):
         for dist, t_rc in targets:
             if t_rc in self.walls:
                 continue
+            if t_rc in self.walls: continue
 
             # A* Search
             path = self._astar(grid, start_rc, t_rc, rows, cols)
@@ -167,6 +198,7 @@ class NovaPolymathAgent(Agent):
         for val in sorted_vals:
             if val == 0:
                 continue  # Skip black
+            if val == 0: continue # Skip black
             matches = np.argwhere(grid == val)
             for r, c in matches:
                 if (r, c) not in self.interactions:
@@ -174,6 +206,7 @@ class NovaPolymathAgent(Agent):
                     break
             if target_rc:
                 break
+            if target_rc: break
 
         if target_rc:
             r, c = target_rc
@@ -190,6 +223,13 @@ class NovaPolymathAgent(Agent):
         r = random.randint(0, rows - 1)
         c = random.randint(0, cols - 1)
         self.ACT_CLICK.set_data({"x": c, "y": r})
+            self.ACT_CLICK.set_data({'x': int(c), 'y': int(r)})
+            return self.ACT_CLICK
+
+        # Fallback: Random click
+        r = random.randint(0, rows-1)
+        c = random.randint(0, cols-1)
+        self.ACT_CLICK.set_data({'x': c, 'y': r})
         return self.ACT_CLICK
 
     def _astar(self, grid, start, end, rows, cols):
@@ -214,12 +254,22 @@ class NovaPolymathAgent(Agent):
 
             for (dr, dc), act in moves:
                 nr, nc = r + dr, c + dc
+            if curr == end: return path
+            if steps > 1000: break
+
+            r, c = curr
+            moves = [((-1,0), self.ACT_UP), ((1,0), self.ACT_DOWN),
+                     ((0,-1), self.ACT_LEFT), ((0,1), self.ACT_RIGHT)]
+
+            for (dr, dc), act in moves:
+                nr, nc = r+dr, c+dc
                 if 0 <= nr < rows and 0 <= nc < cols:
                     # LOGIC: Walkable if 0 OR it is the Goal
                     # (Walking onto the Key/Door is necessary)
                     is_walkable = (grid[nr, nc] == 0) or ((nr, nc) == end)
                     if (nr, nc) in self.walls:
                         is_walkable = False
+                    if (nr, nc) in self.walls: is_walkable = False
 
                     if is_walkable:
                         new_g = steps + 1
@@ -229,6 +279,7 @@ class NovaPolymathAgent(Agent):
                             heapq.heappush(
                                 pq, (new_g + h, new_g, (nr, nc), path + [act])
                             )
+                            heapq.heappush(pq, (new_g + h, new_g, (nr, nc), path + [act]))
         return None
 
     def _find_frontier(self, grid, start, rows, cols):
@@ -261,6 +312,22 @@ class NovaPolymathAgent(Agent):
                     if (nr, nc) not in seen:
                         seen.add((nr, nc))
                         q.append(((nr, nc), path + [act]))
+            if steps > 500: break
+            curr, path = q.popleft()
+
+            r, c = curr
+            moves = [((-1,0), self.ACT_UP), ((1,0), self.ACT_DOWN),
+                     ((0,-1), self.ACT_LEFT), ((0,1), self.ACT_RIGHT)]
+
+            for (dr, dc), act in moves:
+                nr, nc = r+dr, c+dc
+                if 0 <= nr < rows and 0 <= nc < cols:
+                    if (nr, nc) in self.walls: continue
+                    if grid[nr, nc] != 0: continue
+
+                    if (nr, nc) not in seen:
+                        seen.add((nr, nc))
+                        q.append(((nr, nc), path+[act]))
 
             if len(path) > 5 and random.random() < 0.1:
                 return path
@@ -274,6 +341,7 @@ class NovaPolymathAgent(Agent):
             and latest.agent_pos
             and latest.agent_pos != (-1, -1)
         ):
+        if hasattr(latest, 'agent_pos') and latest.agent_pos and latest.agent_pos != (-1, -1):
             return (latest.agent_pos[1], latest.agent_pos[0])
 
         # 2. Visual Scan (Colors 1, 2, 8 are common agents)
@@ -281,6 +349,7 @@ class NovaPolymathAgent(Agent):
             matches = np.argwhere(grid == color)
             if len(matches) == 1:
                 return tuple(matches[0])
+            if len(matches) == 1: return tuple(matches[0])
 
         # 3. Rarest single pixel
         unique, counts = np.unique(grid, return_counts=True)
@@ -293,6 +362,10 @@ class NovaPolymathAgent(Agent):
                 coords = np.argwhere(grid == color)
                 if len(coords) > 0:
                     return tuple(coords[0])
+            if color == 0: continue
+            if counts[np.where(unique == color)[0][0]] < 50:
+                coords = np.argwhere(grid == color)
+                if len(coords) > 0: return tuple(coords[0])
 
         return None
 
@@ -324,3 +397,11 @@ class NovaPolymathAgent(Agent):
         return random.choice(
             [self.ACT_UP, self.ACT_DOWN, self.ACT_LEFT, self.ACT_RIGHT]
         )
+        if action == self.ACT_UP: return r-1, c
+        if action == self.ACT_DOWN: return r+1, c
+        if action == self.ACT_LEFT: return r, c-1
+        if action == self.ACT_RIGHT: return r, c+1
+        return r, c
+
+    def _random_move(self):
+        return random.choice([self.ACT_UP, self.ACT_DOWN, self.ACT_LEFT, self.ACT_RIGHT])
