@@ -1,3 +1,12 @@
+import random
+from collections import deque
+
+import numpy as np
+
+from .agent import Agent
+from .structs import FrameData, GameAction, GameState
+
+
 import numpy as np
 import random
 from collections import deque
@@ -12,10 +21,17 @@ class NovaAutarkyAgent(Agent):
     - Detects Goals via Rarity.
     - Adapts via State Hashing.
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.plan = deque()
         self.knowledge = {
+            "walls": set(),  # Coordinates of discovered walls
+            "bad_goals": set(),  # Unreachable targets
+        }
+        self.last_pos = None
+        self.last_action = None
+        self.state_hash = None  # Tracks inventory/shape changes
             "walls": set(),        # Coordinates of discovered walls
             "bad_goals": set(),    # Unreachable targets
         }
@@ -67,6 +83,7 @@ class NovaAutarkyAgent(Agent):
         if self.state_hash is not None and curr_hash != self.state_hash:
             # Major event! Clear plan to leverage new capabilities (e.g., unlocking door)
             self.plan.clear()
+            self.knowledge["bad_goals"].clear()  # Retry previously failed goals
             self.knowledge["bad_goals"].clear() # Retry previously failed goals
         self.state_hash = curr_hash
 
@@ -83,6 +100,8 @@ class NovaAutarkyAgent(Agent):
 
         best_path = None
         for target_pos in targets:
+            if target_pos in self.knowledge["bad_goals"]:
+                continue
             if target_pos in self.knowledge["bad_goals"]: continue
 
             # Try to pathfind
@@ -103,6 +122,14 @@ class NovaAutarkyAgent(Agent):
 
         # 6. FALLBACK (Explorer)
         # Random walk if no targets or trapped
+        action = random.choice(
+            [
+                GameAction.ACTION1,
+                GameAction.ACTION2,
+                GameAction.ACTION3,
+                GameAction.ACTION4,
+            ]
+        )
         action = random.choice([
             GameAction.ACTION1, GameAction.ACTION2,
             GameAction.ACTION3, GameAction.ACTION4
@@ -136,6 +163,9 @@ class NovaAutarkyAgent(Agent):
         # If no single pixel found, fallback to searching for specific common agent colors
         # e.g. Blue (1), Red (2), Cyan (8)
         for color in [1, 2, 8]:
+            coords = np.argwhere(grid == color)
+            if len(coords) == 1:
+                return tuple(coords[0])
              coords = np.argwhere(grid == color)
              if len(coords) == 1:
                  return tuple(coords[0])
@@ -157,6 +187,7 @@ class NovaAutarkyAgent(Agent):
                     dist = abs(r - agent_pos[0]) + abs(c - agent_pos[1])
                     candidates.append((dist, (r, c)))
 
+        candidates.sort()  # Closest first
         candidates.sort() # Closest first
         return [c[1] for c in candidates]
 
@@ -171,6 +202,8 @@ class NovaAutarkyAgent(Agent):
             if curr == end:
                 return path
 
+            if len(path) > 50:
+                continue  # Limit depth for speed
             if len(path) > 50: continue # Limit depth for speed
 
             r, c = curr
@@ -178,6 +211,7 @@ class NovaAutarkyAgent(Agent):
                 ((-1, 0), GameAction.ACTION1),
                 ((1, 0), GameAction.ACTION2),
                 ((0, -1), GameAction.ACTION3),
+                ((0, 1), GameAction.ACTION4),
                 ((0, 1), GameAction.ACTION4)
             ]
 
@@ -185,11 +219,16 @@ class NovaAutarkyAgent(Agent):
                 nr, nc = r + dr, c + dc
                 if 0 <= nr < rows and 0 <= nc < cols:
                     # Check Learned Walls
+                    if (nr, nc) in self.knowledge["walls"]:
+                        continue
                     if (nr, nc) in self.knowledge["walls"]: continue
 
                     # Heuristic: Avoid stepping on other objects unless it's the target
                     # (Prevents getting stuck on non-goal clutter)
                     if (nr, nc) != end and grid[nr, nc] != 0:
+                        # Treat unknown non-0 as potential obstacle until proven otherwise?
+                        # For LS20, we treat them as walkable to interact.
+                        pass
                          # Treat unknown non-0 as potential obstacle until proven otherwise?
                          # For LS20, we treat them as walkable to interact.
                          pass
@@ -200,6 +239,14 @@ class NovaAutarkyAgent(Agent):
         return None
 
     def _action_to_delta(self, action):
+        if action == GameAction.ACTION1:
+            return (-1, 0)
+        if action == GameAction.ACTION2:
+            return (1, 0)
+        if action == GameAction.ACTION3:
+            return (0, -1)
+        if action == GameAction.ACTION4:
+            return (0, 1)
         if action == GameAction.ACTION1: return (-1, 0)
         if action == GameAction.ACTION2: return (1, 0)
         if action == GameAction.ACTION3: return (0, -1)

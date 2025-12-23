@@ -1,3 +1,12 @@
+import random
+from collections import deque
+
+import numpy as np
+
+from .agent import Agent
+from .structs import FrameData, GameAction, GameState
+
+
 import numpy as np
 import random
 from collections import deque
@@ -15,6 +24,8 @@ class NovaOmniAgent(Agent):
 
     # ACTION7 is typically the generic 'Interact/Use' (Spacebar) in ARC-AGI-3
     # Fallback to ACTION5 if ACTION7 is undefined in specific env version
+    ACT_INTERACT = getattr(GameAction, "ACTION7", GameAction.ACTION5)
+    ACT_UP = GameAction.ACTION1  # Mapped from GameAction (1)
     ACT_INTERACT = getattr(GameAction, 'ACTION7', GameAction.ACTION5)
     ACT_UP = GameAction.ACTION1 # Mapped from GameAction (1)
     ACT_DOWN = GameAction.ACTION2
@@ -29,6 +40,10 @@ class NovaOmniAgent(Agent):
         self.knowledge = {
             "walls": set(),
             "bad_goals": set(),
+            "interactions": set(),  # Track (pos) we have probed
+        }
+        self.last_grid = None  # Store numpy grid
+        self.last_state = None  # (GridBytes, AgentPos)
             "interactions": set()  # Track (pos) we have probed
         }
         self.last_grid = None     # Store numpy grid
@@ -68,6 +83,30 @@ class NovaOmniAgent(Agent):
             prev_grid_bytes, prev_pos = self.last_state
 
             # Did we change position? (Avatar)
+            pos_changed = (
+                (agent_pos != prev_pos)
+                and (prev_pos is not None)
+                and (agent_pos != (0, 0))
+            )
+            # Did the grid change visually? (e.g., cursor moved, or object pushed)
+            grid_changed = grid.tobytes() != prev_grid_bytes
+
+            # Refined Classification: Use Grid Diff to infer Agent Color if needed
+            if grid_changed and not pos_changed:
+                # Grid changed but heuristic didn't track it. Heuristic is wrong.
+                # Identify what moved.
+                diff = grid != self.last_grid
+                changed_values = grid[diff]
+                candidates = [v for v in changed_values if v != 0]
+                if candidates:
+                    from collections import Counter
+
+                    most_common = Counter(candidates).most_common(1)
+                    if most_common:
+                        self.agent_color = most_common[0][0]
+                        # Recalculate pos
+                        agent_pos = self._get_agent_pos(grid)
+                        pos_changed = agent_pos != prev_pos
             pos_changed = (agent_pos != prev_pos) and (prev_pos is not None) and (agent_pos != (0,0))
             # Did the grid change visually? (e.g., cursor moved, or object pushed)
             grid_changed = (grid.tobytes() != prev_grid_bytes)
@@ -92,6 +131,15 @@ class NovaOmniAgent(Agent):
                 # We have a physical body that moves.
                 self.mode = "AVATAR"
             elif grid_changed:
+                # We didn't move bodily (or couldn't track it), but world changed.
+                # If we detected agent color above, we would be in AVATAR.
+                # If not, maybe it's a cursor? Or we failed to track.
+                # Default to AVATAR if we think it's a "body" movement (e.g. pushed something)?
+                # User logic says: "Did a specific pixel move? Avatar Mode."
+                # If grid changed, a pixel moved.
+                # So we should prefer AVATAR if we can track it.
+                # But sticking to user logic:
+                self.mode = "SCIENTIST"
                  # We didn't move bodily (or couldn't track it), but world changed.
                  # If we detected agent color above, we would be in AVATAR.
                  # If not, maybe it's a cursor? Or we failed to track.
@@ -119,6 +167,8 @@ class NovaOmniAgent(Agent):
 
     def _run_avatar_logic(self, grid, agent_pos):
         """v1.6 Autarky Navigation Logic + Interaction Upgrade"""
+        if agent_pos is None or agent_pos == (0, 0):
+            return self._random_move()
         if agent_pos is None or agent_pos == (0,0): return self._random_move()
 
         # 1. Learn Walls via Collision
@@ -143,6 +193,25 @@ class NovaOmniAgent(Agent):
             prev_grid_bytes, prev_pos = self.last_state
             # Check for walls
             # If we tried to move and grid didn't change (collision)
+            if self.last_action in [
+                self.ACT_UP,
+                self.ACT_DOWN,
+                self.ACT_LEFT,
+                self.ACT_RIGHT,
+            ]:
+                # Check if grid changed?
+                # User code uses: if prev_pos == agent_pos ...
+                # If agent_pos is robust, this works.
+                if prev_pos == agent_pos:
+                    self.stuck_count += 1
+                    if self.stuck_count > 1:
+                        blocked_r, blocked_c = self._get_target_pos(
+                            prev_pos, self.last_action
+                        )
+                        self.knowledge["walls"].add((blocked_r, blocked_c))
+                        self.plan.clear()
+                else:
+                    self.stuck_count = 0
             if self.last_action in [self.ACT_UP, self.ACT_DOWN, self.ACT_LEFT, self.ACT_RIGHT]:
                  # Check if grid changed?
                  # User code uses: if prev_pos == agent_pos ...
@@ -169,6 +238,8 @@ class NovaOmniAgent(Agent):
 
         # 4. Pathfind
         for t in targets:
+            if t in self.knowledge["bad_goals"]:
+                continue
             if t in self.knowledge["bad_goals"]: continue
             path = self._bfs(grid, agent_pos, t, self.knowledge["walls"])
             if path:
@@ -189,6 +260,10 @@ class NovaOmniAgent(Agent):
 
         # 1. Probe current location (Interaction)
         # If we are on a non-zero pixel we haven't touched, CLICK IT.
+        if grid[r, c] != 0 and (r, c) not in self.knowledge["interactions"]:
+            self.knowledge["interactions"].add((r, c))
+            self.last_action = self.ACT_INTERACT
+            return self.ACT_INTERACT
         if grid[r, c] != 0 and (r,c) not in self.knowledge["interactions"]:
              self.knowledge["interactions"].add((r,c))
              self.last_action = self.ACT_INTERACT
@@ -201,6 +276,14 @@ class NovaOmniAgent(Agent):
         if valid_targets:
             # Simple greedy step towards target
             tr, tc = valid_targets[0]
+            if r < tr:
+                return self.ACT_DOWN
+            if r > tr:
+                return self.ACT_UP
+            if c < tc:
+                return self.ACT_RIGHT
+            if c > tc:
+                return self.ACT_LEFT
             if r < tr: return self.ACT_DOWN
             if r > tr: return self.ACT_UP
             if c < tc: return self.ACT_RIGHT
@@ -213,6 +296,9 @@ class NovaOmniAgent(Agent):
         """Robustly find the agent or cursor."""
         # Use learned color if available
         if self.agent_color is not None:
+            coords = np.argwhere(grid == self.agent_color)
+            if len(coords) > 0:
+                return tuple(coords[0])
              coords = np.argwhere(grid == self.agent_color)
              if len(coords) > 0:
                  return tuple(coords[0])
@@ -226,6 +312,8 @@ class NovaOmniAgent(Agent):
         sorted_counts = counts[sorted_indices]
 
         for color, count in zip(sorted_colors, sorted_counts):
+            if color == 0 and count > 100:
+                continue
             if color == 0 and count > 100: continue
 
             # Prefer unique (1)
@@ -239,6 +327,8 @@ class NovaOmniAgent(Agent):
 
     def _scan_for_targets(self, grid, agent_pos):
         """Rarity Heuristic: Find objects < 25 pixels."""
+        if agent_pos is None:
+            return []
         if agent_pos is None: return []
         unique, counts = np.unique(grid, return_counts=True)
         rare = unique[(counts < 25) & (unique != 0)]
@@ -254,6 +344,7 @@ class NovaOmniAgent(Agent):
                 dist = abs(r - agent_pos[0]) + abs(c - agent_pos[1])
                 targets.append((dist, (r, c)))
 
+        targets.sort()  # Closest first
         targets.sort() # Closest first
         return [t[1] for t in targets]
 
@@ -265,6 +356,31 @@ class NovaOmniAgent(Agent):
         iters = 0
         while q:
             iters += 1
+            if iters > 2000:
+                return None  # Timeout safety
+
+            curr, path = q.popleft()
+            if curr == end:
+                return path
+            if len(path) > 50:
+                continue  # Depth limit
+
+            r, c = curr
+            moves = [
+                ((-1, 0), self.ACT_UP),
+                ((1, 0), self.ACT_DOWN),
+                ((0, -1), self.ACT_LEFT),
+                ((0, 1), self.ACT_RIGHT),
+            ]
+
+            for (dr, dc), act in moves:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < rows and 0 <= nc < cols:
+                    if (nr, nc) in known_walls:
+                        continue
+                    if (nr, nc) not in seen:
+                        seen.add((nr, nc))
+                        q.append(((nr, nc), path + [act]))
             if iters > 2000: return None # Timeout safety
 
             curr, path = q.popleft()
@@ -286,6 +402,20 @@ class NovaOmniAgent(Agent):
 
     def _get_target_pos(self, pos, action):
         r, c = pos
+        if action == self.ACT_UP:
+            return r - 1, c
+        if action == self.ACT_DOWN:
+            return r + 1, c
+        if action == self.ACT_LEFT:
+            return r, c - 1
+        if action == self.ACT_RIGHT:
+            return r, c + 1
+        return r, c
+
+    def _random_move(self):
+        self.last_action = random.choice(
+            [self.ACT_UP, self.ACT_DOWN, self.ACT_LEFT, self.ACT_RIGHT]
+        )
         if action == self.ACT_UP: return r-1, c
         if action == self.ACT_DOWN: return r+1, c
         if action == self.ACT_LEFT: return r, c-1

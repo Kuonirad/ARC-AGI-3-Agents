@@ -1,3 +1,12 @@
+import random
+from collections import deque
+
+import numpy as np
+
+from .agent import Agent
+from .structs import FrameData, GameAction, GameState
+
+
 import numpy as np
 import random
 from collections import deque
@@ -18,6 +27,7 @@ class NovaPerceptronAgent(Agent):
     ACT_DOWN = GameAction.ACTION2
     ACT_LEFT = GameAction.ACTION3
     ACT_RIGHT = GameAction.ACTION4
+    ACT_INTERACT = getattr(GameAction, "ACTION5", GameAction.ACTION5)  # Space
     ACT_INTERACT = getattr(GameAction, 'ACTION5', GameAction.ACTION5) # Space
 
     def __init__(self, *args, **kwargs):
@@ -25,6 +35,15 @@ class NovaPerceptronAgent(Agent):
         self.mode = "CALIBRATING"
         self.plan = deque()
         self.knowledge = {
+            "walls": set(),  # stored as (row, col)
+            "bad_goals": set(),  # stored as (row, col)
+            "interactions": set(),  # stored as (row, col)
+        }
+        self.last_state = None  # ((row,col), grid_bytes)
+        self.last_action = None
+        self.stuck_count = 0
+        self.calibration_steps = 0
+        self.inventory_hash = None  # Detects color changes (Key pickup)
             "walls": set(),        # stored as (row, col)
             "bad_goals": set(),    # stored as (row, col)
             "interactions": set()  # stored as (row, col)
@@ -72,6 +91,33 @@ class NovaPerceptronAgent(Agent):
             prev_rc, prev_bytes = self.last_state
 
             # Body Check: Did coordinates change?
+            pos_changed = (agent_rc != prev_rc) and (prev_rc != (0, 0))
+
+            # World Check: Did pixels change? (Cursor/God mode)
+            grid_changed = grid.tobytes() != prev_bytes
+
+            # Dynamic Color Logic (from v1.7)
+            if grid_changed and not pos_changed:
+                # Grid changed but heuristic didn't track it. Heuristic is wrong.
+                # Identify what moved.
+                last_grid = np.frombuffer(prev_bytes, dtype=grid.dtype).reshape(
+                    grid.shape
+                )
+                diff = grid != last_grid
+                changed_values = grid[diff]
+                candidates = [v for v in changed_values if v != 0]
+                if candidates:
+                    from collections import Counter
+
+                    most_common = Counter(candidates).most_common(1)
+                    if most_common:
+                        self.agent_color = most_common[0][0]
+                        # Recalculate pos
+                        agent_rc = self._get_agent_rc(latest, grid)
+                        pos_changed = agent_rc != prev_rc
+
+            if pos_changed:
+                self.mode = "AVATAR"  # We have a body
             pos_changed = (agent_rc != prev_rc) and (prev_rc != (0,0))
 
             # World Check: Did pixels change? (Cursor/God mode)
@@ -112,6 +158,16 @@ class NovaPerceptronAgent(Agent):
 
     def _run_avatar(self, grid, agent_rc):
         """Logic for ls20 (Navigation)"""
+        if not agent_rc or agent_rc == (0, 0):
+            return self._random_move()
+
+        # 1. Collision Learning
+        if self.last_action in [
+            self.ACT_UP,
+            self.ACT_DOWN,
+            self.ACT_LEFT,
+            self.ACT_RIGHT,
+        ]:
         if not agent_rc or agent_rc == (0,0): return self._random_move()
 
         # 1. Collision Learning
@@ -121,6 +177,7 @@ class NovaPerceptronAgent(Agent):
             last_grid_bytes = self.last_state[1] if self.last_state else None
             curr_grid_bytes = grid.tobytes()
 
+            if last_grid_bytes == curr_grid_bytes:  # No change = Collision
             if last_grid_bytes == curr_grid_bytes: # No change = Collision
                 self.stuck_count += 1
                 if self.stuck_count > 1:
@@ -141,12 +198,16 @@ class NovaPerceptronAgent(Agent):
         self.inventory_hash = curr_pixel
 
         # 3. Execute Plan
+        if self.plan:
+            return self.plan.popleft()
         if self.plan: return self.plan.popleft()
 
         # 4. Aggressive Pathfinding
         # Find Rarest Non-Wall Objects
         targets = self._scan_targets(grid, agent_rc)
         for t in targets:
+            if t in self.knowledge["bad_goals"]:
+                continue
             if t in self.knowledge["bad_goals"]: continue
             path = self._bfs(grid, agent_rc, t, self.knowledge["walls"])
             if path:
@@ -165,6 +226,8 @@ class NovaPerceptronAgent(Agent):
         r, c = agent_rc
 
         # If ON object, Interact
+        if grid[r, c] != 0 and (r, c) not in self.knowledge["interactions"]:
+            self.knowledge["interactions"].add((r, c))
         if grid[r, c] != 0 and (r,c) not in self.knowledge["interactions"]:
             self.knowledge["interactions"].add((r,c))
             return self.ACT_INTERACT
@@ -175,6 +238,14 @@ class NovaPerceptronAgent(Agent):
 
         if valid:
             tr, tc = valid[0]
+            if r < tr:
+                return self.ACT_DOWN
+            if r > tr:
+                return self.ACT_UP
+            if c < tc:
+                return self.ACT_RIGHT
+            if c > tc:
+                return self.ACT_LEFT
             if r < tr: return self.ACT_DOWN
             if r > tr: return self.ACT_UP
             if c < tc: return self.ACT_RIGHT
@@ -189,6 +260,27 @@ class NovaPerceptronAgent(Agent):
         steps = 0
         while q:
             steps += 1
+            if steps > 2000:
+                break
+            curr, path = q.popleft()
+            if curr == end:
+                return path
+            if len(path) > 50:
+                continue
+
+            r, c = curr
+            moves = [
+                ((-1, 0), self.ACT_UP),
+                ((1, 0), self.ACT_DOWN),
+                ((0, -1), self.ACT_LEFT),
+                ((0, 1), self.ACT_RIGHT),
+            ]
+
+            for (dr, dc), act in moves:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < rows and 0 <= nc < cols:
+                    if (nr, nc) in walls:
+                        continue
             if steps > 2000: break
             curr, path = q.popleft()
             if curr == end: return path
@@ -210,6 +302,7 @@ class NovaPerceptronAgent(Agent):
 
                     if is_walkable and (nr, nc) not in seen:
                         seen.add((nr, nc))
+                        q.append(((nr, nc), path + [act]))
                         q.append(((nr, nc), path+[act]))
         return None
 
@@ -217,6 +310,14 @@ class NovaPerceptronAgent(Agent):
         r, c = rc
         h, w = grid.shape
         # Prioritize Right, then others
+        if c < w - 1 and grid[r, c + 1] == 0:
+            return self.ACT_RIGHT
+        if r < h - 1 and grid[r + 1, c] == 0:
+            return self.ACT_DOWN
+        if c > 0 and grid[r, c - 1] == 0:
+            return self.ACT_LEFT
+        if r > 0 and grid[r - 1, c] == 0:
+            return self.ACT_UP
         if c < w-1 and grid[r, c+1] == 0: return self.ACT_RIGHT
         if r < h-1 and grid[r+1, c] == 0: return self.ACT_DOWN
         if c > 0 and grid[r, c-1] == 0: return self.ACT_LEFT
@@ -226,6 +327,19 @@ class NovaPerceptronAgent(Agent):
     def _get_agent_rc(self, latest, grid):
         """Converts API (x,y) to Matrix (row, col)"""
         # Trust API (Safety Wrapper)
+        if (
+            hasattr(latest, "agent_pos")
+            and latest.agent_pos
+            and latest.agent_pos != (-1, -1)
+        ):
+            x, y = latest.agent_pos
+            return (y, x)  # SWAP
+
+        # Use learned color
+        if self.agent_color is not None:
+            coords = np.argwhere(grid == self.agent_color)
+            if len(coords) > 0:
+                return tuple(coords[0])
         if hasattr(latest, 'agent_pos') and latest.agent_pos and latest.agent_pos != (-1, -1):
             x, y = latest.agent_pos
             return (y, x) # SWAP
@@ -243,6 +357,14 @@ class NovaPerceptronAgent(Agent):
         sorted_counts = counts[sorted_indices]
 
         for color, count in zip(sorted_colors, sorted_counts):
+            if color == 0 and count > 100:
+                continue
+            if 0 < count < 50:
+                coords = np.argwhere(grid == color)
+                if len(coords) > 0:
+                    return tuple(coords[0])
+
+        return (0, 0)  # Fallback
             if color == 0 and count > 100: continue
             if 0 < count < 50:
                 coords = np.argwhere(grid == color)
@@ -265,6 +387,20 @@ class NovaPerceptronAgent(Agent):
 
     def _get_target_rc(self, rc, action):
         r, c = rc
+        if action == self.ACT_UP:
+            return r - 1, c
+        if action == self.ACT_DOWN:
+            return r + 1, c
+        if action == self.ACT_LEFT:
+            return r, c - 1
+        if action == self.ACT_RIGHT:
+            return r, c + 1
+        return r, c
+
+    def _random_move(self):
+        return random.choice(
+            [self.ACT_UP, self.ACT_DOWN, self.ACT_LEFT, self.ACT_RIGHT]
+        )
         if action == self.ACT_UP: return r-1, c
         if action == self.ACT_DOWN: return r+1, c
         if action == self.ACT_LEFT: return r, c-1

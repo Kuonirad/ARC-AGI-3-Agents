@@ -128,6 +128,9 @@ class Swarm:
         except ValueError:
             raise Exception(f"Failed to open scorecard: {r.status_code} - {r.text}")
 
+        if "error" in response_data:
+            logger.warning(f"API error in open scorecard: {response_data}")
+
         if not r.ok:
             raise Exception(
                 f"API error during open scorecard: {r.status_code} - {response_data}"
@@ -149,6 +152,9 @@ class Swarm:
         except ValueError:
             logger.warning(f"Failed to close scorecard: {r.status_code} - {r.text}")
             return None
+
+        if "error" in response_data:
+            logger.warning(f"API error in close scorecard: {response_data}")
 
         if not r.ok:
             logger.warning(
