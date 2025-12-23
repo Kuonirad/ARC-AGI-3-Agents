@@ -12,6 +12,7 @@ from .templates.llm_agents import LLM, FastLLM, GuidedLLM, ReasoningLLM
 from .templates.random_agent import Random
 from .templates.reasoning_agent import ReasoningAgent
 from .templates.smolagents import SmolCodingAgent, SmolVisionAgent
+from .nova_autarky import NovaAutarkyAgent
 
 load_dotenv()
 
@@ -20,6 +21,7 @@ AVAILABLE_AGENTS: dict[str, Type[Agent]] = {
     for cls in Agent.__subclasses__()
     if cls.__name__ != "Playback"
 }
+AVAILABLE_AGENTS["nova_autarky"] = NovaAutarkyAgent
 
 # add all the recording files as valid agent names
 for rec in Recorder.list():
