@@ -8,6 +8,7 @@ from .nova_omni import NovaOmniAgent
 from .nova_perceptron import NovaPerceptronAgent
 from .nova_polymath import NovaPolymathAgent
 from .kevin_kull import KevinKullAgent
+from .kevin_kull import NovaSingularityAgent as KevinKull
 from .recorder import Recorder
 from .swarm import Swarm
 from .templates.langgraph_functional_agent import LangGraphFunc, LangGraphTextOnly
@@ -17,6 +18,10 @@ from .templates.llm_agents import LLM, FastLLM, GuidedLLM, ReasoningLLM
 from .templates.random_agent import Random
 from .templates.reasoning_agent import ReasoningAgent
 from .templates.smolagents import SmolCodingAgent, SmolVisionAgent
+from .nova_autarky import NovaAutarkyAgent
+from .nova_omni import NovaOmniAgent
+from .nova_perceptron import NovaPerceptronAgent
+from .nova_polymath import NovaPolymathAgent
 
 load_dotenv()
 
@@ -30,6 +35,8 @@ AVAILABLE_AGENTS["nova_omni"] = NovaOmniAgent
 AVAILABLE_AGENTS["nova_perceptron"] = NovaPerceptronAgent
 # AVAILABLE_AGENTS["nova_singularity"] = NovaSingularityAgent # Deprecated
 AVAILABLE_AGENTS["kevin_kull"] = KevinKullAgent
+AVAILABLE_AGENTS["nova_polymath"] = NovaPolymathAgent
+AVAILABLE_AGENTS["kevin_kull"] = KevinKull
 
 # add all the recording files as valid agent names
 for rec in Recorder.list():
