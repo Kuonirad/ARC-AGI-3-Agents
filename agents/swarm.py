@@ -51,6 +51,7 @@ class Swarm:
         self.headers = {
             "X-API-Key": os.getenv("ARC_API_KEY", ""),
             "Accept": "application/json",
+            "User-Agent": f"ARC-AGI-3-Agent/{self.agent_name}",
         }
         self._session = requests.Session()
         self._session.headers.update(self.headers)
@@ -64,7 +65,7 @@ class Swarm:
             guid = parts[-3] if len(parts) >= 4 else "unknown"
             self.tags.extend(["playback", guid])
         else:
-            self.tags.extend(["agent", self.agent_name])
+            self.tags.extend(["agent", self.agent_name, "bot", "algorithm"])
 
     def main(self) -> Scorecard | None:
         """The main orchestration loop, continues until all agents are done."""
