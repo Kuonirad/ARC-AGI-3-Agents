@@ -7,6 +7,7 @@ from .nova_autarky import NovaAutarkyAgent
 from .nova_omni import NovaOmniAgent
 from .nova_perceptron import NovaPerceptronAgent
 from .nova_polymath import NovaPolymathAgent
+from .kevin_kull import KevinKullAgent
 from .kevin_kull import NovaSingularityAgent as KevinKull
 from .recorder import Recorder
 from .swarm import Swarm
@@ -32,6 +33,8 @@ AVAILABLE_AGENTS: dict[str, Type[Agent]] = {
 AVAILABLE_AGENTS["nova_autarky"] = NovaAutarkyAgent
 AVAILABLE_AGENTS["nova_omni"] = NovaOmniAgent
 AVAILABLE_AGENTS["nova_perceptron"] = NovaPerceptronAgent
+# AVAILABLE_AGENTS["nova_singularity"] = NovaSingularityAgent # Deprecated
+AVAILABLE_AGENTS["kevin_kull"] = KevinKullAgent
 AVAILABLE_AGENTS["nova_polymath"] = NovaPolymathAgent
 AVAILABLE_AGENTS["kevin_kull"] = KevinKull
 
