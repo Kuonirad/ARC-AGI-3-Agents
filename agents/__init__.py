@@ -43,6 +43,13 @@ from .nova_perceptron import NovaPerceptronAgent
 from .nova_polymath import NovaPolymathAgent
 from .kevin_kull import KevinKullAgent # <--- v6.0-NEXUS
 
+# NOVA PROTOCOL
+from .nova_autarky import NovaAutarkyAgent
+from .nova_omni import NovaOmniAgent
+from .nova_perceptron import NovaPerceptronAgent
+from .nova_polymath import NovaPolymathAgent
+from .kevin_kull import KevinKullAgent # <--- v7.0-ZENITH
+
 load_dotenv()
 
 AVAILABLE_AGENTS: dict[str, Type[Agent]] = {
@@ -57,6 +64,13 @@ AVAILABLE_AGENTS["nova_perceptron"] = NovaPerceptronAgent
 AVAILABLE_AGENTS["kevin_kull"] = KevinKullAgent
 AVAILABLE_AGENTS["nova_polymath"] = NovaPolymathAgent
 AVAILABLE_AGENTS["kevin_kull"] = KevinKull
+
+# Explicit Registration
+AVAILABLE_AGENTS["nova_autarky"] = NovaAutarkyAgent
+AVAILABLE_AGENTS["nova_omni"] = NovaOmniAgent
+AVAILABLE_AGENTS["nova_perceptron"] = NovaPerceptronAgent
+AVAILABLE_AGENTS["nova_polymath"] = NovaPolymathAgent
+AVAILABLE_AGENTS["kevin_kull"] = KevinKullAgent
 
 # Explicit Registration
 AVAILABLE_AGENTS["nova_autarky"] = NovaAutarkyAgent
