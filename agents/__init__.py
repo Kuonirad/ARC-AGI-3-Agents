@@ -3,6 +3,10 @@ from typing import Type, cast
 from dotenv import load_dotenv
 
 from .agent import Agent, Playback
+from .nova_autarky import NovaAutarkyAgent
+from .nova_omni import NovaOmniAgent
+from .nova_perceptron import NovaPerceptronAgent
+from .nova_polymath import NovaPolymathAgent
 from .recorder import Recorder
 from .swarm import Swarm
 from .templates.langgraph_functional_agent import LangGraphFunc, LangGraphTextOnly
@@ -20,6 +24,10 @@ AVAILABLE_AGENTS: dict[str, Type[Agent]] = {
     for cls in Agent.__subclasses__()
     if cls.__name__ != "Playback"
 }
+AVAILABLE_AGENTS["nova_autarky"] = NovaAutarkyAgent
+AVAILABLE_AGENTS["nova_omni"] = NovaOmniAgent
+AVAILABLE_AGENTS["nova_perceptron"] = NovaPerceptronAgent
+AVAILABLE_AGENTS["nova_polymath"] = NovaPolymathAgent
 
 # add all the recording files as valid agent names
 for rec in Recorder.list():
