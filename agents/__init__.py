@@ -16,6 +16,10 @@ from .templates.llm_agents import LLM, FastLLM, GuidedLLM, ReasoningLLM
 from .templates.random_agent import Random
 from .templates.reasoning_agent import ReasoningAgent
 from .templates.smolagents import SmolCodingAgent, SmolVisionAgent
+from .nova_autarky import NovaAutarkyAgent
+from .nova_omni import NovaOmniAgent
+from .nova_perceptron import NovaPerceptronAgent
+from .nova_polymath import NovaPolymathAgent
 
 load_dotenv()
 

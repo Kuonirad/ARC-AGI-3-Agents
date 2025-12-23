@@ -7,6 +7,12 @@ from .agent import Agent
 from .structs import FrameData, GameAction, GameState
 
 
+import numpy as np
+import random
+from collections import deque
+from .agent import Agent
+from .structs import FrameData, GameAction, GameState
+
 class NovaAutarkyAgent(Agent):
     """
     NOVA-M-COP v1.6-AUTARKY
@@ -26,6 +32,12 @@ class NovaAutarkyAgent(Agent):
         self.last_pos = None
         self.last_action = None
         self.state_hash = None  # Tracks inventory/shape changes
+            "walls": set(),        # Coordinates of discovered walls
+            "bad_goals": set(),    # Unreachable targets
+        }
+        self.last_pos = None
+        self.last_action = None
+        self.state_hash = None     # Tracks inventory/shape changes
         self.stuck_count = 0
 
     def is_done(self, frames: list[FrameData], latest_frame: FrameData) -> bool:
@@ -72,6 +84,7 @@ class NovaAutarkyAgent(Agent):
             # Major event! Clear plan to leverage new capabilities (e.g., unlocking door)
             self.plan.clear()
             self.knowledge["bad_goals"].clear()  # Retry previously failed goals
+            self.knowledge["bad_goals"].clear() # Retry previously failed goals
         self.state_hash = curr_hash
 
         # 3. EXECUTE EXISTING PLAN
@@ -89,6 +102,7 @@ class NovaAutarkyAgent(Agent):
         for target_pos in targets:
             if target_pos in self.knowledge["bad_goals"]:
                 continue
+            if target_pos in self.knowledge["bad_goals"]: continue
 
             # Try to pathfind
             path = self._bfs(grid, agent_pos, target_pos)
@@ -116,6 +130,10 @@ class NovaAutarkyAgent(Agent):
                 GameAction.ACTION4,
             ]
         )
+        action = random.choice([
+            GameAction.ACTION1, GameAction.ACTION2,
+            GameAction.ACTION3, GameAction.ACTION4
+        ])
         self.last_action = action
         return action
 
@@ -148,6 +166,9 @@ class NovaAutarkyAgent(Agent):
             coords = np.argwhere(grid == color)
             if len(coords) == 1:
                 return tuple(coords[0])
+             coords = np.argwhere(grid == color)
+             if len(coords) == 1:
+                 return tuple(coords[0])
 
         return (0, 0)
 
@@ -167,6 +188,7 @@ class NovaAutarkyAgent(Agent):
                     candidates.append((dist, (r, c)))
 
         candidates.sort()  # Closest first
+        candidates.sort() # Closest first
         return [c[1] for c in candidates]
 
     def _bfs(self, grid, start, end):
@@ -182,6 +204,7 @@ class NovaAutarkyAgent(Agent):
 
             if len(path) > 50:
                 continue  # Limit depth for speed
+            if len(path) > 50: continue # Limit depth for speed
 
             r, c = curr
             moves = [
@@ -189,6 +212,7 @@ class NovaAutarkyAgent(Agent):
                 ((1, 0), GameAction.ACTION2),
                 ((0, -1), GameAction.ACTION3),
                 ((0, 1), GameAction.ACTION4),
+                ((0, 1), GameAction.ACTION4)
             ]
 
             for (dr, dc), act in moves:
@@ -197,6 +221,7 @@ class NovaAutarkyAgent(Agent):
                     # Check Learned Walls
                     if (nr, nc) in self.knowledge["walls"]:
                         continue
+                    if (nr, nc) in self.knowledge["walls"]: continue
 
                     # Heuristic: Avoid stepping on other objects unless it's the target
                     # (Prevents getting stuck on non-goal clutter)
@@ -204,6 +229,9 @@ class NovaAutarkyAgent(Agent):
                         # Treat unknown non-0 as potential obstacle until proven otherwise?
                         # For LS20, we treat them as walkable to interact.
                         pass
+                         # Treat unknown non-0 as potential obstacle until proven otherwise?
+                         # For LS20, we treat them as walkable to interact.
+                         pass
 
                     if (nr, nc) not in seen:
                         seen.add((nr, nc))
@@ -219,4 +247,8 @@ class NovaAutarkyAgent(Agent):
             return (0, -1)
         if action == GameAction.ACTION4:
             return (0, 1)
+        if action == GameAction.ACTION1: return (-1, 0)
+        if action == GameAction.ACTION2: return (1, 0)
+        if action == GameAction.ACTION3: return (0, -1)
+        if action == GameAction.ACTION4: return (0, 1)
         return (0, 0)
