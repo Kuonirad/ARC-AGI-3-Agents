@@ -15,6 +15,17 @@ class GlobalNexus:
 class KevinKullAgent(Agent):
     """
     NOVA-M-COP v9.1-COSMOS (KEVIN_KULL)
+    The 'Phase 1' Standard Agent.
+
+    CAPABILITIES:
+    1. COSMOS LOOP BREAKER: Detects 'State Stasis' (Position + Grid Hash).
+    2. RECOVERY INJECTION: Forces entropy (Chaos) when stuck > 5.
+    3. DELTA IDENTITY: Locates agent via grid change if color tracking fails.
+    4. SPLIT CAUSALITY: Separate weights for USE vs CLICK.
+    """
+
+    MAX_ACTIONS = 400 # CRITICAL: Extended runway for recovery
+
     The 'Interaction Loophole' Patch.
 
     PATCH LOG:
@@ -101,6 +112,9 @@ class KevinKullAgent(Agent):
         self.last_grid = None
         self.last_action = None
         self.last_target_val = None
+        self.agent_color = None
+        self.stuck_counter = 0
+        self.lost_counter = 0
         self.last_perspective = None # Track for diagnostics
         self.agent_color = None
         self.stuck_counter = 0
@@ -253,6 +267,7 @@ class NovaSingularityAgent(Agent):
         # 2. DELTA IDENTITY (Safety Net)
         agent_rc = self._locate_agent(latest, grid)
         if agent_rc is None and self.last_grid is not None:
+             # If grid size matches, check for delta
              if grid.shape == self.last_grid.shape:
                  delta_rc = self._find_center_of_change(self.last_grid, grid)
                  if delta_rc:
@@ -262,6 +277,7 @@ class NovaSingularityAgent(Agent):
         if agent_rc is None: self.lost_counter += 1
         else: self.lost_counter = 0
 
+        # 3. PHYSICS UPDATE (The Fix: Progress-Decoupled)
         # 3. PHYSICS UPDATE (THE PATCH)
         # 2. MOTION-DERIVED IDENTITY (The Fix)
         # If we don't know who we are, check if we moved
@@ -284,17 +300,26 @@ class NovaSingularityAgent(Agent):
         # 5. L1: PARLIAMENT
         bids = []
 
+        # [Blind Pilot] (Priority 0.99 if lost)
         # [Blind Pilot]
         if self.mode == "AVATAR" and agent_rc is None:
             bid = 0.99 if self.lost_counter < 40 else 0.0
             bids.append((bid, self._perspective_chaos(), None, "BlindPilot"))
 
+        # [Newton] Nav
         # [Newton]
         # Newton (Nav)
         if self.mode == "AVATAR":
             bids.append(self._perspective_newton(grid, agent_rc, rows, cols))
             bids.append(self._perspective_fusion(grid, agent_rc, rows, cols))
 
+        # [Euclid] Pattern
+        bids.append(self._perspective_euclid(grid, rows, cols))
+
+        # [Skinner] Interact
+        bids.append(self._perspective_skinner(grid, agent_rc, rows, cols))
+
+        # [Recovery] (Triggers on Global Stasis)
         # [Euclid]
         bids.append(self._perspective_euclid(grid, rows, cols))
 
@@ -393,6 +418,9 @@ class NovaSingularityAgent(Agent):
         weighted_bids = []
         for score, action, target, owner in valid_bids:
             w_score = score * GlobalNexus.PERSPECTIVE_WEIGHTS[owner]
+            # Safety: Don't walk into known walls (unless Recovery overrides)
+            if owner in ["Newton", "Fusion"] and target:
+                 if target in self.walls: w_score *= 0.0
             if owner in ["Newton", "Fusion"] and target:
                  if target in self.walls: w_score *= 0.0
             # Meta-Weight Application
@@ -503,6 +531,8 @@ class NovaSingularityAgent(Agent):
         targets = self._scan_targets(grid, agent_rc)
         for dist, t_rc in targets:
             if t_rc in self.walls or t_rc in self.bad_goals: continue
+            # Allow push (cost=5)
+            path = self._astar(grid, agent_rc, t_rc, rows, cols, allow_push=True)
             path = self._astar(grid, agent_rc, t_rc, rows, cols, allow_push=True)
         """Navigation: Soft A* to Rare Objects."""
         if not agent_rc: return (0.0, None, None, "Newton")
@@ -586,6 +616,7 @@ class NovaSingularityAgent(Agent):
                     score = 0.8 * GlobalNexus.USE_SCORES[val]
                     return (score, self.ACT_USE, (r,c), "Skinner")
 
+        # Click Gating: Allow if lost or in Scientist Mode
         if self.mode != "AVATAR" or self.lost_counter > 20:
             unique, counts = np.unique(grid, return_counts=True)
             for val in unique[np.argsort(counts)]:
@@ -628,6 +659,12 @@ class NovaSingularityAgent(Agent):
         return (0.0, None, None, "Fusion")
 
     def _perspective_recovery(self):
+        # COSMOS FIX: Triggers on Global Stasis (stuck_counter > 2)
+        if self.stuck_counter > 2:
+            if self.stuck_counter > 5:
+                # CHAOS INJECTION (Priority 3.0)
+                return (3.0, self._perspective_chaos(), None, "Recovery")
+            # Try interaction
         # NEW: Triggers on stuck_counter, which now respects global stasis
         if self.stuck_counter > 2:
             if self.stuck_counter > 5:
@@ -950,10 +987,12 @@ class NovaSingularityAgent(Agent):
             return self.handshake_queue.popleft()
         else:
             self.mode = "AVATAR"
+            # PARTIAL MERGE: Ensures 4-way control even on partial calibration
             if not self.control_map:
                 self.control_map = self.DEFAULT_CONTROLS.copy()
             else:
                 for k, v in self.DEFAULT_CONTROLS.items():
+                    if k not in self.control_map: self.control_map[k] = v
                     if k not in self.control_map:
                         self.control_map[k] = v
             GlobalNexus.CONTROLS = self.control_map.copy()
@@ -990,6 +1029,7 @@ class NovaSingularityAgent(Agent):
                  dr, dc = self.control_map[self.last_action]
                  tr, tc = self.last_pos[0]+dr, self.last_pos[1]+dc
                  self.walls.add((tr, tc))
+                 if self.stuck_counter > 8: self.agent_color = None
 
                  # Identity Flush
                  if self.stuck_counter > 8:
