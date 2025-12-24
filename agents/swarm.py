@@ -51,6 +51,7 @@ class Swarm:
         self.headers = {
             "X-API-Key": os.getenv("ARC_API_KEY", ""),
             "Accept": "application/json",
+            "User-Agent": f"ARC-AGI-3-Agent/{self.agent_name}",
         }
         self._session = requests.Session()
         self._session.headers.update(self.headers)
@@ -64,7 +65,7 @@ class Swarm:
             guid = parts[-3] if len(parts) >= 4 else "unknown"
             self.tags.extend(["playback", guid])
         else:
-            self.tags.extend(["agent", self.agent_name])
+            self.tags.extend(["agent", self.agent_name, "bot", "algorithm"])
 
     def main(self) -> Scorecard | None:
         """The main orchestration loop, continues until all agents are done."""
@@ -128,6 +129,9 @@ class Swarm:
         except ValueError:
             raise Exception(f"Failed to open scorecard: {r.status_code} - {r.text}")
 
+        if "error" in response_data:
+            logger.warning(f"API error in open scorecard: {response_data}")
+
         if not r.ok:
             raise Exception(
                 f"API error during open scorecard: {r.status_code} - {response_data}"
@@ -149,6 +153,9 @@ class Swarm:
         except ValueError:
             logger.warning(f"Failed to close scorecard: {r.status_code} - {r.text}")
             return None
+
+        if "error" in response_data:
+            logger.warning(f"API error in close scorecard: {response_data}")
 
         if not r.ok:
             logger.warning(
