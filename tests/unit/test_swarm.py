@@ -48,7 +48,7 @@ class TestSwarmScorecard:
 
         json_data = call_args[1]["json"]
         tags = json_data["tags"]
-        assert tags == ["agent", "random"]
+        assert tags == ["agent", "random", "bot", "algorithm"]
 
         mock_post.reset_mock()
         mock_response.json.return_value = {
@@ -183,7 +183,7 @@ class TestSwarmTags:
         call_args = mock_post.call_args
         json_data = call_args[1]["json"]
 
-        assert json_data["tags"] == custom_tags + ["agent", "random"]
+        assert json_data["tags"] == custom_tags + ["agent", "random", "bot", "algorithm"]
 
     @patch("agents.swarm.requests.Session.post")
     def test_open_scorecard_with_empty_tags(self, mock_post):
@@ -203,7 +203,7 @@ class TestSwarmTags:
         call_args = mock_post.call_args
         json_data = call_args[1]["json"]
 
-        assert json_data["tags"] == ["agent", "random"]
+        assert json_data["tags"] == ["agent", "random", "bot", "algorithm"]
 
     @patch("agents.swarm.requests.Session.post")
     def test_open_scorecard_with_default_and_custom_tags(self, mock_post):
@@ -227,4 +227,4 @@ class TestSwarmTags:
         mock_post.assert_called_once()
         call_args = mock_post.call_args
         json_data = call_args[1]["json"]
-        assert json_data["tags"] == custom_tags + ["agent", "random"]
+        assert json_data["tags"] == custom_tags + ["agent", "random", "bot", "algorithm"]

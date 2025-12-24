@@ -1,5 +1,4 @@
 from typing import Type, cast
-
 from dotenv import load_dotenv
 
 from .agent import Agent, Playback
@@ -13,6 +12,14 @@ from .templates.random_agent import Random
 from .templates.reasoning_agent import ReasoningAgent
 from .templates.smolagents import SmolCodingAgent, SmolVisionAgent
 
+# NOVA PROTOCOL
+from .nova_autarky import NovaAutarkyAgent
+from .nova_omni import NovaOmniAgent
+from .nova_perceptron import NovaPerceptronAgent
+from .nova_polymath import NovaPolymathAgent
+# from .nova_singularity import NovaSingularityAgent
+from .kevin_kull import KevinKullAgent # <--- v9.1-COSMOS
+
 load_dotenv()
 
 AVAILABLE_AGENTS: dict[str, Type[Agent]] = {
@@ -21,11 +28,16 @@ AVAILABLE_AGENTS: dict[str, Type[Agent]] = {
     if cls.__name__ != "Playback"
 }
 
-# add all the recording files as valid agent names
+AVAILABLE_AGENTS["nova_autarky"] = NovaAutarkyAgent
+AVAILABLE_AGENTS["nova_omni"] = NovaOmniAgent
+AVAILABLE_AGENTS["nova_perceptron"] = NovaPerceptronAgent
+AVAILABLE_AGENTS["nova_polymath"] = NovaPolymathAgent
+# AVAILABLE_AGENTS["nova_singularity"] = NovaSingularityAgent
+AVAILABLE_AGENTS["kevin_kull"] = KevinKullAgent
+
 for rec in Recorder.list():
     AVAILABLE_AGENTS[rec] = Playback
 
-# update the agent dictionary to include subclasses of LLM class
 AVAILABLE_AGENTS["reasoningagent"] = ReasoningAgent
 
 __all__ = [
