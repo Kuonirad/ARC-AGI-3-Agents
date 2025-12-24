@@ -831,6 +831,28 @@ class NovaSingularityAgent(Agent):
         # 5. EXECUTIVE
         valid_bids = [b for b in bids if b[1] is not None]
         if not valid_bids: return self._perspective_chaos()
+
+        weighted_bids = []
+        for score, action, target, owner in valid_bids:
+            w_score = score * GlobalNexus.PERSPECTIVE_WEIGHTS[owner]
+            if owner in ["Newton", "Fusion"] and target:
+                 if target in self.walls: w_score *= 0.0
+            weighted_bids.append((w_score, action, target, owner))
+
+        weighted_bids.sort(key=lambda x: x[0], reverse=True)
+        score, action, target, owner = weighted_bids[0]
+
+        # 6. EXECUTION
+        if target:
+            val = 1
+            if len(target) > 2: val = target[2]
+            else:
+                try:
+                    gval = grid[target[0], target[1]]
+                    val = gval if gval != 0 else 1
+                except: pass
+            # Force color if painting empty space (unless Euclid specified)
+            if val == 0 and owner != "Euclid": val = 1
         # [Euclid]
         bids.append(self._perspective_euclid(grid, rows, cols, pat_b))
 
@@ -1358,6 +1380,12 @@ class NovaSingularityAgent(Agent):
                  dic = GlobalNexus.USE_SCORES if self.last_action == self.ACT_USE else GlobalNexus.CLICK_SCORES
                  dic[val] *= (1.2 if success else 0.9)
 
+        moved = (agent_rc != self.last_pos) if self.last_pos and agent_rc else False
+        changed = (current_inv != np.sum(self.last_grid)) if self.last_grid is not None else True
+        if not changed and not moved: self.stuck_counter += 1
+        else: self.stuck_counter = 0
+
+        # SMART WALL MARKING (Object Preservation)
         moved = (agent_rc != self.last_pos) if self.last_pos and agent_rc else False
         changed = (current_inv != np.sum(self.last_grid)) if self.last_grid is not None else True
         if not changed and not moved: self.stuck_counter += 1
