@@ -905,6 +905,15 @@ class NovaSingularityAgent(Agent):
         rows, cols = grid.shape
         current_hash = grid.tobytes()
 
+        # 0) Background inference
+        vals, counts = np.unique(grid, return_counts=True)
+        if len(vals) > 0:
+            self.bg_color = int(vals[int(np.argmax(counts))])
+
+        # 1) Vision oracle (optional)
+        grid_changed = (self.last_grid is None) or (not np.array_equal(grid, self.last_grid))
+        if self.vision_engine and (self.step_count % self.VISION_INTERVAL == 0 or grid_changed):
+            GlobalNexus.clean_cache()
         # 0. INFER BACKGROUND (Fix: Floor is Lava)
         vals, counts = np.unique(grid, return_counts=True)
         if len(vals) > 0:
@@ -919,6 +928,16 @@ class NovaSingularityAgent(Agent):
             tags, targets = GlobalNexus.VISION_CACHE[current_hash]
             self.vision_targets = targets
 
+            GlobalNexus.VISION_HINTS = {"Newton": 1.0, "Euclid": 1.0, "Skinner": 1.0}
+            if "NAV" in tags:
+                GlobalNexus.VISION_HINTS["Newton"] = 1.5
+            if "PATTERN" in tags:
+                GlobalNexus.VISION_HINTS["Euclid"] = 1.5
+            if "INTERACT" in tags:
+                GlobalNexus.VISION_HINTS["Skinner"] = 1.5
+
+        # 2) Locate agent
+        agent_rc = self._locate_agent(latest, grid)
         if latest.state == GameState.NOT_PLAYED or not latest.frame:
             return GameAction.RESET
         try: return self._cosmos_loop(latest)
@@ -1810,6 +1829,82 @@ class NovaSingularityAgent(Agent):
             if dr != 0 or dc != 0:
                 self.control_map[self.last_action] = (dr, dc)
                 GlobalNexus.CONTROLS[self.last_action] = (dr, dc)
+
+        self.last_pos = agent_rc
+
+        if self.handshake_queue:
+            self.last_action = self.handshake_queue[0]
+            return self.handshake_queue.popleft()
+
+        # Switch into avatar mode
+        self.mode = "AVATAR"
+        if not self.control_map:
+            self.control_map = self.DEFAULT_CONTROLS.copy()
+        else:
+            for k, v in self.DEFAULT_CONTROLS.items():
+                if k not in self.control_map:
+                    self.control_map[k] = v
+        GlobalNexus.CONTROLS = self.control_map.copy()
+
+        act = random.choice(self.RAW_ACTIONS)
+        self.last_action = act
+        return act
+
+    def _update_physics_and_learn(self, grid: np.ndarray, agent_rc: Optional[Tuple[int, int]]):
+        prev_grid = self.last_grid
+        changed = (prev_grid is None) or (not np.array_equal(grid, prev_grid))
+        moved = (agent_rc is not None and self.last_pos is not None and agent_rc != self.last_pos)
+
+        # Update causal model from interaction outcomes
+        if self.last_action is not None and prev_grid is not None:
+            if self.last_action in self.INTERACTION_TYPES and self.last_target_val is not None:
+                success = changed
+                val = int(self.last_target_val)
+                curr = float(GlobalNexus.CAUSAL_GRAPH[(val, self.last_action)])
+                GlobalNexus.CAUSAL_GRAPH[(val, self.last_action)] = (
+                    min(0.99, curr * 1.2) if success else max(0.1, curr * 0.8)
+                )
+
+        # Meta-cognition: reliability update
+        if self.last_perspective:
+            if moved or changed:
+                GlobalNexus.PERSPECTIVE_WEIGHTS[self.last_perspective] = min(
+                    2.0, GlobalNexus.PERSPECTIVE_WEIGHTS[self.last_perspective] * 1.05
+                )
+            elif self.stuck_counter > 2:
+                GlobalNexus.PERSPECTIVE_WEIGHTS[self.last_perspective] = max(
+                    0.2, GlobalNexus.PERSPECTIVE_WEIGHTS[self.last_perspective] * 0.95
+                )
+
+        if not changed and not moved:
+            self.stuck_counter += 1
+        else:
+            self.stuck_counter = 0
+
+        # Wall inference if we tried to move but didn't
+        if self.mode == "AVATAR" and self.last_pos and agent_rc == self.last_pos and self.last_action in self.control_map:
+            dr, dc = self.control_map[self.last_action]
+            tr, tc = self.last_pos[0] + dr, self.last_pos[1] + dc
+            if 0 <= tr < grid.shape[0] and 0 <= tc < grid.shape[1]:
+                val = int(grid[tr, tc])
+
+                is_interactive = any(
+                    GlobalNexus.CAUSAL_GRAPH[(val, a)] > 0.6 for a in self.INTERACTION_TYPES
+                )
+
+                # Approx "wall" heuristic: huge regions of bg or very common tiles
+                unique, counts = np.unique(grid, return_counts=True)
+                count = int(counts[np.where(unique == val)][0]) if val in unique else 999
+
+                if (count > 50 or val == self.bg_color) and not is_interactive:
+                    self.walls.add((tr, tc))
+                else:
+                    # Encourage probing if not sure
+                    self.interactions[(tr, tc)] = -100
+                    self.stuck_counter = max(self.stuck_counter, 3)
+
+                if self.stuck_counter > 8:
+                    self.agent_color = None
 
         self.last_pos = agent_rc
 
