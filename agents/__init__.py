@@ -210,6 +210,13 @@ AVAILABLE_AGENTS["nova_polymath"] = NovaPolymathAgent
 # AVAILABLE_AGENTS["nova_singularity"] = NovaSingularityAgent
 AVAILABLE_AGENTS["kevin_kull"] = KevinKullAgent
 
+AVAILABLE_AGENTS["nova_autarky"] = NovaAutarkyAgent
+AVAILABLE_AGENTS["nova_omni"] = NovaOmniAgent
+AVAILABLE_AGENTS["nova_perceptron"] = NovaPerceptronAgent
+AVAILABLE_AGENTS["nova_polymath"] = NovaPolymathAgent
+# AVAILABLE_AGENTS["nova_singularity"] = NovaSingularityAgent
+AVAILABLE_AGENTS["kevin_kull"] = KevinKullAgent
+
 for rec in Recorder.list():
     AVAILABLE_AGENTS[rec] = Playback
 
